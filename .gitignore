@@ -1,0 +1,17 @@
+# Logs
+*.log
+npm-debug.log*
+
+# Dependency directories
+node_modules
+
+# Build
+main.js
+*.js.map
+
+# Caches
+.eslintcache
+
+# OS
+.DS_Store
+Thumbs.db

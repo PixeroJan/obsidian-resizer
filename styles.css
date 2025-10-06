@@ -1,0 +1,101 @@
+.image-scale-overlay {
+	position: fixed;
+	border: 2px solid var(--handle-color);
+	pointer-events: auto;
+	z-index: 1000;
+	box-sizing: border-box;
+}
+
+.image-scale-handle {
+	position: absolute;
+	width: var(--handle-size);
+	height: var(--handle-size);
+	background: var(--handle-color);
+	border: none;
+	border-radius: 2px;
+	cursor: pointer;
+	z-index: 1001;
+	pointer-events: all;
+	box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+	touch-action: none; /* Prevent default touch behaviors */
+	-webkit-user-select: none; /* Prevent text selection on touch */
+	user-select: none;
+}
+
+/* Make handles larger on touch devices for easier tapping */
+@media (pointer: coarse) {
+	.image-scale-handle {
+		width: calc(var(--handle-size) * 1.5);
+		height: calc(var(--handle-size) * 1.5);
+	}
+	
+	.image-scale-handle.nw {
+		top: calc(var(--handle-size) * 1.5 / -2);
+		left: calc(var(--handle-size) * 1.5 / -2);
+	}
+	
+	.image-scale-handle.ne {
+		top: calc(var(--handle-size) * 1.5 / -2);
+		right: calc(var(--handle-size) * 1.5 / -2);
+	}
+	
+	.image-scale-handle.sw {
+		bottom: calc(var(--handle-size) * 1.5 / -2);
+		left: calc(var(--handle-size) * 1.5 / -2);
+	}
+	
+	.image-scale-handle.se {
+		bottom: calc(var(--handle-size) * 1.5 / -2);
+		right: calc(var(--handle-size) * 1.5 / -2);
+	}
+}
+
+.image-scale-handle.nw {
+	top: calc(var(--handle-size) / -2);
+	left: calc(var(--handle-size) / -2);
+	cursor: nw-resize;
+}
+
+.image-scale-handle.ne {
+	top: calc(var(--handle-size) / -2);
+	right: calc(var(--handle-size) / -2);
+	cursor: ne-resize;
+}
+
+.image-scale-handle.sw {
+	bottom: calc(var(--handle-size) / -2);
+	left: calc(var(--handle-size) / -2);
+	cursor: sw-resize;
+}
+
+.image-scale-handle.se {
+	bottom: calc(var(--handle-size) / -2);
+	right: calc(var(--handle-size) / -2);
+	cursor: se-resize;
+}
+
+.image-scale-dimension-display {
+	position: absolute;
+	top: -35px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: rgba(0, 0, 0, 0.8);
+	color: white;
+	padding: 6px 10px;
+	border-radius: 4px;
+	font-size: 13px;
+	font-weight: bold;
+	white-space: nowrap;
+	z-index: 1002;
+	pointer-events: none;
+}
+
+.image-scale-active {
+	outline: none !important;
+	border: none !important;
+}
+
+/* Hide PDF scale HTML comments when not actively editing the line */
+.cm-line:not(.cm-active) .cm-comment {
+	display: none !important;
+}

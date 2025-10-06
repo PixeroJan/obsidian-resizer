@@ -1,0 +1,8 @@
+{
+  "maintainAspectRatio": true,
+  "showDimensionsWhileResizing": true,
+  "minWidth": 50,
+  "minHeight": 50,
+  "handleSize": 10,
+  "handleColor": "#4A9EFF",
+}

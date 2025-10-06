@@ -1,0 +1,10 @@
+{
+  "id": "resizer",
+  "name": "Resizer",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Resize embedded images and PDFs by dragging corners. Automatically updates markdown with correct dimensions.",
+  "author": "Jan Sandström",
+  "authorUrl": "https://github.com/PixeroJan",
+  "isDesktopOnly": false
+}
