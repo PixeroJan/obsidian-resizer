@@ -37,7 +37,7 @@ this.processAllImages();
 );
 
 
-		this.registerDomEvent(document, "click", (evt: MouseEvent) => {
+		this.registerDomEvent(activeDocument, "click", (evt: MouseEvent) => {
 			const target = evt.target as HTMLElement;
 
 			if (target.tagName === "IMG") {
@@ -108,7 +108,7 @@ this.observer.disconnect();
 }
 
 async loadSettings() {
-this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<ImageScaleSettings>);
 }
 
 async saveSettings() {
