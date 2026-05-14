@@ -1,10 +1,10 @@
-﻿import { Plugin, MarkdownView, Notice, Editor, MarkdownPostProcessorContext } from "obsidian";
+﻿import { Plugin, MarkdownView, Notice, Editor } from "obsidian";
 import { ImageScaleSettings, DEFAULT_SETTINGS, ImageScaleSettingTab } from "./settings";
 import { ImageResizer } from "./imageResizer";
 
 export default class ImageScalePlugin extends Plugin {
-settings: ImageScaleSettings;
-private resizer: ImageResizer;
+settings!: ImageScaleSettings;
+private resizer!: ImageResizer;
 private observer: MutationObserver | null = null;
 
 async onload() {
@@ -19,9 +19,9 @@ this.resizer.makeImageResizable(img, context);
 });
 
 // For PDFs, look for the .pdf-embed container divs
-const pdfEmbeds = element.querySelectorAll(".pdf-embed, .internal-embed.pdf-embed");
-pdfEmbeds.forEach((pdfDiv: Element) => {
-this.resizer.makeImageResizable(pdfDiv as any, context);
+const pdfEmbeds = element.querySelectorAll<HTMLDivElement>(".pdf-embed, .internal-embed.pdf-embed");
+pdfEmbeds.forEach((pdfDiv) => {
+this.resizer.makeImageResizable(pdfDiv, context);
 });
 });
 
@@ -68,7 +68,7 @@ this.processAllImages();
 						evt.preventDefault();
 						evt.stopPropagation();
 						// Treat the PDF embed div as the resizable element
-						this.resizer.toggleImageResize(pdfEmbed as any);
+						this.resizer.toggleImageResize(pdfEmbed as HTMLDivElement);
 						return false;
 					}
 				}
@@ -120,7 +120,7 @@ private startObserving() {
 		for (const mutation of mutations) {
 			if (mutation.addedNodes.length > 0) {
 				mutation.addedNodes.forEach((node) => {
-					if (node instanceof HTMLElement) {
+					if (node.instanceOf(HTMLElement)) {
 						const images = node.querySelectorAll("img");
 						images.forEach((img: HTMLImageElement) => {
 							this.resizer.makeImageResizable(img, null);
@@ -130,19 +130,19 @@ private startObserving() {
 						}
 
 						// Look for PDF embed divs
-						const pdfEmbeds = node.querySelectorAll(".pdf-embed, .internal-embed.pdf-embed");
-						pdfEmbeds.forEach((pdfDiv: Element) => {
-							this.resizer.makeImageResizable(pdfDiv as any, null);
+						const pdfEmbeds = node.querySelectorAll<HTMLDivElement>(".pdf-embed, .internal-embed.pdf-embed");
+						pdfEmbeds.forEach((pdfDiv) => {
+							this.resizer.makeImageResizable(pdfDiv, null);
 						});
 						if (node.classList.contains("pdf-embed")) {
-							this.resizer.makeImageResizable(node as any, null);
+							this.resizer.makeImageResizable(node as HTMLDivElement, null);
 						}
 					}
 				});
 			}
 		}
 	});
-	this.observer.observe(document.body, {
+	this.observer.observe(activeDocument.body, {
 		childList: true,
 		subtree: true
 	});
@@ -161,10 +161,10 @@ this.resizer.makeImageResizable(img, null);
 });
 
 // Look for PDF embed divs
-const pdfEmbeds = container.querySelectorAll(".pdf-embed, .internal-embed.pdf-embed");
-pdfEmbeds.forEach((pdfDiv: Element) => {
-if (!(pdfDiv as any).dataset.imageScaleProcessed) {
-this.resizer.makeImageResizable(pdfDiv as any, null);
+const pdfEmbeds = container.querySelectorAll<HTMLDivElement>(".pdf-embed, .internal-embed.pdf-embed");
+pdfEmbeds.forEach((pdfDiv) => {
+if (!pdfDiv.dataset.imageScaleProcessed) {
+this.resizer.makeImageResizable(pdfDiv, null);
 }
 });
 }

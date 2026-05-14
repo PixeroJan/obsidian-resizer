@@ -1,5 +1,7 @@
-import { App, MarkdownPostProcessorContext, Notice, TFile, Plugin, MarkdownView } from 'obsidian';
+import { App, MarkdownPostProcessorContext, Notice, Plugin, MarkdownView } from 'obsidian';
 import { ImageScaleSettings } from './settings';
+
+type ResizableElement = HTMLImageElement | HTMLIFrameElement | HTMLDivElement;
 
 interface ResizeHandle {
 	element: HTMLElement;
@@ -10,7 +12,7 @@ export class ImageResizer {
 	private app: App;
 	private plugin: Plugin;
 	private settings: ImageScaleSettings;
-	private activeImage: HTMLImageElement | null = null;
+	private activeImage: ResizableElement | null = null;
 	private handles: ResizeHandle[] = [];
 	private overlay: HTMLElement | null = null;
 	private dimensionDisplay: HTMLElement | null = null;
@@ -21,7 +23,7 @@ export class ImageResizer {
 	private startHeight = 0;
 	private aspectRatio = 1;
 	private currentHandle: string | null = null;
-	private processedImages = new WeakSet<HTMLImageElement>();
+	private processedImages = new WeakSet<Element>();
 	private finalWidth = 0;
 	private finalHeight = 0;
 
@@ -39,16 +41,18 @@ export class ImageResizer {
 	private addStyles() {
 		// Detect if device has touch support (iPad, mobile, etc.)
 		const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-		
+
 		// Use larger handles on touch devices for easier grabbing
 		const handleSize = isTouchDevice ? Math.max(this.settings.handleSize, 15) : this.settings.handleSize;
-		
+
 		// Set CSS variables for dynamic settings
-		document.body.style.setProperty('--handle-color', this.settings.handleColor);
-		document.body.style.setProperty('--handle-size', `${handleSize}px`);
+		activeDocument.body.setCssProps({
+			'--handle-color': this.settings.handleColor,
+			'--handle-size': `${handleSize}px`,
+		});
 	}
 
-	toggleImageResize(img: HTMLImageElement | HTMLIFrameElement | HTMLDivElement) {
+	toggleImageResize(img: ResizableElement) {
 		// If this image is already active, deactivate
 		if (this.activeImage === img) {
 			this.deactivateResize();
@@ -58,18 +62,18 @@ export class ImageResizer {
 		}
 	}
 
-	makeImageResizable(img: HTMLImageElement | HTMLIFrameElement | HTMLDivElement, context: MarkdownPostProcessorContext | null) {
+	makeImageResizable(img: ResizableElement, context: MarkdownPostProcessorContext | null) {
 		// Skip if already processed
-		if (this.processedImages.has(img as any)) {
+		if (this.processedImages.has(img)) {
 			return;
 		}
-		
+
 		// Mark as processed
-		this.processedImages.add(img as any);
+		this.processedImages.add(img);
 		img.dataset.imageScaleProcessed = 'true';
 
 		// Store the source info for later use in updating markdown
-		const src = img.getAttribute('src') || (img as any).src || '';
+		const src = img.getAttribute('src') || (img instanceof HTMLImageElement ? img.src : '') || '';
 		if (src) {
 			// Extract just the filename
 			const filename = src.split('/').pop()?.split('?')[0]?.split('#')[0];
@@ -79,35 +83,31 @@ export class ImageResizer {
 		}
 
 		// Determine element type
-		const isIframe = img.tagName === 'IFRAME';
-		const isPdfDiv = img.classList?.contains('pdf-embed') || img.classList?.contains('internal-embed');
+		const isPdfDiv = !!img.classList?.contains('pdf-embed') || !!img.classList?.contains('internal-embed');
 		const isImage = img.tagName === 'IMG';
-		
+
 		// For PDF divs, check for scale stored in markdown HTML comment
 		if (isPdfDiv) {
-			
 			// Get the current file and read it directly
 			const file = this.app.workspace.getActiveFile();
 			if (file) {
 				this.app.vault.read(file).then(content => {
 					const lines = content.split('\n');
-					
+
 					// Get the PDF source
-					const src = img.getAttribute('src') || '';
-					const cleanSrc = src.split('#')[0];
+					const pdfSrc = img.getAttribute('src') || '';
+					const cleanSrc = pdfSrc.split('#')[0];
 					const srcFilename = cleanSrc.split('/').pop()?.split('?')[0];
-					
+
 					// Find the line that contains this PDF embed with scale comment
 					for (const line of lines) {
 						if (line.includes(srcFilename || '') && line.includes('<!-- pdf-scale:')) {
 							// Extract scale from comment
 							const scaleMatch = line.match(/<!-- pdf-scale:([\d.]+) -->/);
-							
+
 							if (scaleMatch) {
 								const scale = parseFloat(scaleMatch[1]);
-								
-								(img as HTMLDivElement).style.transform = `scale(${scale})`;
-								(img as HTMLDivElement).style.transformOrigin = 'top left';
+								this.applyPdfScale(img as HTMLDivElement, scale);
 							}
 							break;
 						}
@@ -117,11 +117,11 @@ export class ImageResizer {
 				});
 			}
 		}
-		
+
 		// Wait for image to load (skip for iframes and divs)
 		if (isImage && !(img as HTMLImageElement).complete) {
 			img.addEventListener('load', () => {
-				this.processedImages.delete(img as any);
+				this.processedImages.delete(img);
 				delete img.dataset.imageScaleProcessed;
 				this.makeImageResizable(img, context);
 			}, { once: true });
@@ -134,52 +134,58 @@ export class ImageResizer {
 		}
 
 		// Add a visual indicator on hover
-		img.style.cursor = 'pointer';
+		img.classList.add('image-scale-clickable');
 		img.title = 'Click to resize';
 	}
 
-	private activateResize(img: HTMLImageElement | HTMLIFrameElement | HTMLDivElement, context: MarkdownPostProcessorContext | null) {
+	private applyPdfScale(pdfDiv: HTMLDivElement, scale: number) {
+		pdfDiv.classList.add('image-scale-pdf-scaled');
+		pdfDiv.setCssProps({ '--pdf-scale': String(scale) });
+	}
+
+	private activateResize(img: ResizableElement, context: MarkdownPostProcessorContext | null) {
 		// Deactivate previous image if any
 		if (this.activeImage && this.activeImage !== img) {
 			this.deactivateResize();
 		}
 
-		this.activeImage = img as any;
+		this.activeImage = img;
 		img.classList.add('image-scale-active');
 
 		// Store aspect ratio
-		const isIframe = img.tagName === 'IFRAME';
-		const isPdfDiv = img.classList?.contains('pdf-embed');
-		
-		if (isIframe || isPdfDiv) {
-			const element = img as HTMLElement;
-			this.aspectRatio = element.clientWidth / element.clientHeight || 16/9; // Default to 16:9 for PDFs
+		const isIframeOrPdf = img.tagName === 'IFRAME' || !!img.classList?.contains('pdf-embed');
+
+		if (isIframeOrPdf) {
+			this.aspectRatio = img.clientWidth / img.clientHeight || 16 / 9; // Default to 16:9 for PDFs
 		} else {
 			const image = img as HTMLImageElement;
 			this.aspectRatio = image.naturalWidth / image.naturalHeight;
 		}
 
+		const doc = activeDocument;
+		const win = activeWindow;
+
 		// Create overlay as a sibling to body (fixed positioning)
-		this.overlay = document.createElement('div');
+		this.overlay = doc.createElement('div');
 		this.overlay.classList.add('image-scale-overlay');
-		document.body.appendChild(this.overlay);
-		
+		doc.body.appendChild(this.overlay);
+
 		// Position overlay over the image
-		this.positionOverlay(img as any);
+		this.positionOverlay(img);
 
 		// Create resize handles
 		const positions: Array<'nw' | 'ne' | 'sw' | 'se'> = ['nw', 'ne', 'sw', 'se'];
 		positions.forEach(pos => {
-			const handle = document.createElement('div');
+			const handle = doc.createElement('div');
 			handle.classList.add('image-scale-handle', pos);
-			
+
 			// Mouse events
 			handle.addEventListener('mousedown', (e) => {
 				e.preventDefault();
 				e.stopPropagation();
-				this.startResize(e, pos, img as any, context);
+				this.startResize(e, pos, img, context);
 			});
-			
+
 			// Touch events for mobile/tablet
 			handle.addEventListener('touchstart', (e) => {
 				e.preventDefault();
@@ -192,9 +198,9 @@ export class ImageResizer {
 					bubbles: true,
 					cancelable: true
 				});
-				this.startResize(mouseEvent, pos, img as any, context);
+				this.startResize(mouseEvent, pos, img, context);
 			}, { passive: false });
-			
+
 			// Prevent default touch behavior on handles
 			handle.addEventListener('touchmove', (e) => {
 				e.preventDefault();
@@ -206,10 +212,10 @@ export class ImageResizer {
 
 		// Create dimension display if enabled
 		if (this.settings.showDimensionsWhileResizing) {
-			this.dimensionDisplay = document.createElement('div');
+			this.dimensionDisplay = doc.createElement('div');
 			this.dimensionDisplay.classList.add('image-scale-dimension-display');
-			const width = (img as any).width || img.clientWidth;
-			const height = (img as any).height || img.clientHeight;
+			const width = (img instanceof HTMLImageElement ? img.width : 0) || img.clientWidth;
+			const height = (img instanceof HTMLImageElement ? img.height : 0) || img.clientHeight;
 			this.updateDimensionDisplay(width, height);
 			this.overlay?.appendChild(this.dimensionDisplay);
 		}
@@ -219,29 +225,33 @@ export class ImageResizer {
 			const target = e.target as Node;
 			if (!img.contains(target) && !this.overlay?.contains(target)) {
 				this.deactivateResize();
-				document.removeEventListener('click', deactivateHandler);
+				doc.removeEventListener('click', deactivateHandler);
 			}
 		};
-		setTimeout(() => {
-			document.addEventListener('click', deactivateHandler);
+		win.setTimeout(() => {
+			doc.addEventListener('click', deactivateHandler);
 		}, 0);
 	}
-	
-	private positionOverlay(img: HTMLImageElement | HTMLIFrameElement | HTMLDivElement) {
+
+	private positionOverlay(img: ResizableElement) {
 		if (!this.overlay) return;
-		
+
 		const rect = img.getBoundingClientRect();
-		const isPdfDiv = img.classList?.contains('pdf-embed') || img.classList?.contains('internal-embed');
-		
+		const isPdfDiv = !!img.classList?.contains('pdf-embed') || !!img.classList?.contains('internal-embed');
+
 		// Always update position
-		this.overlay.style.top = rect.top + 'px';
-		this.overlay.style.left = rect.left + 'px';
-		
+		this.overlay.setCssStyles({
+			top: rect.top + 'px',
+			left: rect.left + 'px',
+		});
+
 		// For PDFs during resize, don't update size (it's being controlled by onResize)
 		// For images and initial setup, update size from the element
 		if (!isPdfDiv || !this.isResizing) {
-			this.overlay.style.width = rect.width + 'px';
-			this.overlay.style.height = rect.height + 'px';
+			this.overlay.setCssStyles({
+				width: rect.width + 'px',
+				height: rect.height + 'px',
+			});
 		}
 	}
 
@@ -264,70 +274,75 @@ export class ImageResizer {
 		this.handles = [];
 	}
 
-	private startResize(e: MouseEvent, handle: string, img: HTMLImageElement | HTMLDivElement | HTMLIFrameElement, context: MarkdownPostProcessorContext | null) {
+	private startResize(e: MouseEvent, handle: string, img: ResizableElement, context: MarkdownPostProcessorContext | null) {
 		e.preventDefault();
 		this.isResizing = true;
 		this.currentHandle = handle;
 		this.startX = e.clientX;
 		this.startY = e.clientY;
-		
+
 		// Get dimensions - handle different element types
-		if (img.tagName === 'IMG') {
-			this.startWidth = (img as HTMLImageElement).width;
-			this.startHeight = (img as HTMLImageElement).height;
+		if (img instanceof HTMLImageElement) {
+			this.startWidth = img.width;
+			this.startHeight = img.height;
 		} else {
 			// For divs and iframes, use clientWidth/clientHeight
 			this.startWidth = img.clientWidth;
 			this.startHeight = img.clientHeight;
 		}
 
-		const mouseMoveHandler = (e: MouseEvent) => this.onResize(e, img as any);
-		const touchMoveHandler = (e: TouchEvent) => {
-			e.preventDefault();
-			const touch = e.touches[0];
+		const doc = activeDocument;
+		const win = activeWindow;
+
+		const mouseMoveHandler = (ev: MouseEvent) => this.onResize(ev, img);
+		const touchMoveHandler = (ev: TouchEvent) => {
+			ev.preventDefault();
+			const touch = ev.touches[0];
 			const mouseEvent = new MouseEvent('mousemove', {
 				clientX: touch.clientX,
 				clientY: touch.clientY,
 				bubbles: true,
 				cancelable: true
 			});
-			this.onResize(mouseEvent, img as any);
-		};
-		
-		const mouseUpHandler = async (e: MouseEvent | TouchEvent) => {
-			this.isResizing = false;
-			document.removeEventListener('mousemove', mouseMoveHandler);
-			document.removeEventListener('mouseup', mouseUpHandler);
-			document.removeEventListener('touchmove', touchMoveHandler);
-			document.removeEventListener('touchend', mouseUpHandler);
-			document.removeEventListener('touchcancel', mouseUpHandler);
-			
-			// Show that we're attempting to save
-			new Notice('Saving resize...');
-			
-			// Small delay to ensure all DOM updates complete, especially important on iPad
-			await new Promise(resolve => setTimeout(resolve, 100));
-			
-			// Update markdown for both images and PDFs
-			try {
-				if (img.tagName === 'IMG') {
-					await this.updateMarkdown(img as HTMLImageElement, context);
-				} else if (img.classList?.contains('pdf-embed')) {
-					await this.updatePdfMarkdown(img as HTMLDivElement, context);
-				}
-			} catch (error) {
-				new Notice('Error saving resize: ' + error.message);
-			}
+			this.onResize(mouseEvent, img);
 		};
 
-		document.addEventListener('mousemove', mouseMoveHandler);
-		document.addEventListener('mouseup', mouseUpHandler);
-		document.addEventListener('touchmove', touchMoveHandler, { passive: false });
-		document.addEventListener('touchend', mouseUpHandler);
-		document.addEventListener('touchcancel', mouseUpHandler);
+		const mouseUpHandler = (_ev: MouseEvent | TouchEvent) => {
+			void (async () => {
+				this.isResizing = false;
+				doc.removeEventListener('mousemove', mouseMoveHandler);
+				doc.removeEventListener('mouseup', mouseUpHandler);
+				doc.removeEventListener('touchmove', touchMoveHandler);
+				doc.removeEventListener('touchend', mouseUpHandler);
+				doc.removeEventListener('touchcancel', mouseUpHandler);
+
+				// Show that we're attempting to save
+				new Notice('Saving resize...');
+
+				// Small delay to ensure all DOM updates complete, especially important on iPad
+				await new Promise(resolve => win.setTimeout(resolve, 100));
+
+				// Update markdown for both images and PDFs
+				try {
+					if (img instanceof HTMLImageElement) {
+						await this.updateMarkdown(img, context);
+					} else if (img.classList?.contains('pdf-embed')) {
+						await this.updatePdfMarkdown(img as HTMLDivElement, context);
+					}
+				} catch (error) {
+					new Notice('Error saving resize: ' + (error as Error).message);
+				}
+			})();
+		};
+
+		doc.addEventListener('mousemove', mouseMoveHandler);
+		doc.addEventListener('mouseup', mouseUpHandler);
+		doc.addEventListener('touchmove', touchMoveHandler, { passive: false });
+		doc.addEventListener('touchend', mouseUpHandler);
+		doc.addEventListener('touchcancel', mouseUpHandler);
 	}
 
-	private onResize(e: MouseEvent, img: HTMLImageElement | HTMLDivElement | HTMLIFrameElement) {
+	private onResize(e: MouseEvent, img: ResizableElement) {
 		if (!this.isResizing || !this.currentHandle) return;
 
 		const deltaX = e.clientX - this.startX;
@@ -361,7 +376,7 @@ export class ImageResizer {
 			// Use the larger dimension change to maintain aspect ratio
 			const widthChange = Math.abs(newWidth - this.startWidth);
 			const heightChange = Math.abs(newHeight - this.startHeight);
-			
+
 			if (widthChange > heightChange) {
 				newHeight = newWidth / this.aspectRatio;
 			} else {
@@ -378,27 +393,31 @@ export class ImageResizer {
 		this.finalHeight = Math.round(newHeight);
 
 		// Check if this is a PDF div
-		const isPdfDiv = img.classList?.contains('pdf-embed') || img.classList?.contains('internal-embed');
+		const isPdfDiv = !!img.classList?.contains('pdf-embed') || !!img.classList?.contains('internal-embed');
 
 		// For PDFs, don't apply inline styles (they cause scrollbars)
 		// Just update the overlay size to show the preview
 		if (!isPdfDiv) {
 			// Apply new dimensions for images and iframes only
-			img.style.width = `${newWidth}px`;
-			img.style.height = `${newHeight}px`;
-			
+			img.setCssStyles({
+				width: `${newWidth}px`,
+				height: `${newHeight}px`,
+			});
+
 			// For images, also set the width/height attributes
-			if (img.tagName === 'IMG') {
-				(img as HTMLImageElement).width = Math.round(newWidth);
-				(img as HTMLImageElement).height = Math.round(newHeight);
+			if (img instanceof HTMLImageElement) {
+				img.width = Math.round(newWidth);
+				img.height = Math.round(newHeight);
 			}
 		}
 
 		// Update overlay size to show the new dimensions visually
 		if (this.overlay && isPdfDiv) {
 			// For PDFs, resize the overlay itself to show the preview
-			this.overlay.style.width = `${newWidth}px`;
-			this.overlay.style.height = `${newHeight}px`;
+			this.overlay.setCssStyles({
+				width: `${newWidth}px`,
+				height: `${newHeight}px`,
+			});
 		}
 
 		// Update overlay position to follow the resized image
@@ -447,14 +466,14 @@ export class ImageResizer {
 			let newLine = line;
 			
 			// Try wikilink style: ![[filename|size]]
-			newLine = newLine.replace(/!\[\[([^\]]+?)(?:\|\d+(?:x\d+)?)?\]\]/g, (match, path) => {
+			newLine = newLine.replace(/!\[\[([^\]]+?)(?:\|\d+(?:x\d+)?)?\]\]/g, (_match, path: string) => {
 				updated = true;
 				return `![[${path}|${width}]]`;
 			});
 			
 			// If not updated, try standard markdown: ![alt](path|size)
 			if (newLine === line) {
-				newLine = newLine.replace(/!\[([^\]]*)\]\(([^)]+?)(?:\|\d+(?:x\d+)?)?\)/g, (match, alt, path) => {
+				newLine = newLine.replace(/!\[([^\]]*)\]\(([^)]+?)(?:\|\d+(?:x\d+)?)?\)/g, (_match, alt: string, path: string) => {
 					updated = true;
 					const newSize = this.settings.maintainAspectRatio ? width : `${width}x${height}`;
 					return `![${alt}](${path}|${newSize})`;
@@ -472,7 +491,7 @@ export class ImageResizer {
 				editor.setValue(newContent);
 				new Notice(`Image resized to ${width}×${height}px`);
 			} catch (error) {
-				new Notice('Error saving: ' + error.message);
+				new Notice('Error saving: ' + (error as Error).message);
 			}
 		} else {
 			new Notice('No image syntax found in file');
@@ -528,7 +547,7 @@ export class ImageResizer {
 				// Matches: ![[file.pdf]] or ![[file.pdf]]<!-- pdf-scale:0.75 -->
 				const wikilinkPattern = /!\[\[([^#|\]]+\.pdf)(?:#[^\]]+)?(?:\|[^\]]+)?\]\](?:<!--\s*pdf-scale:[\d.]+\s*-->)?/gi;
 				
-				const newLine = line.replace(wikilinkPattern, (match, pdfPath) => {
+				const newLine = line.replace(wikilinkPattern, (match, pdfPath: string) => {
 					// Check if this is our PDF
 					if (cleanSrc) {
 						const srcFilename = cleanSrc.split('/').pop()?.split('?')[0];
@@ -558,14 +577,13 @@ export class ImageResizer {
 				await this.app.vault.modify(file, newContent);
 				
 				// Apply the scale immediately
-				pdfDiv.style.transform = `scale(${scale})`;
-				pdfDiv.style.transformOrigin = 'top left';
+				this.applyPdfScale(pdfDiv, scale);
 				
 				this.deactivateResize();
 				
 				new Notice(`PDF scaled to ${Math.round(scale * 100)}%`);
 			} catch (error) {
-				new Notice('Error saving PDF resize: ' + error.message);
+				new Notice('Error saving PDF resize: ' + (error as Error).message);
 			}
 		} else {
 			new Notice('Could not update markdown - PDF not found in file');
