@@ -107,8 +107,3 @@
 	transform-origin: top left;
 }
 
-/* Hide PDF scale HTML comments when not actively editing the line
-   (doubled class selector raises specificity instead of using !important) */
-.cm-line.cm-line:not(.cm-active) .cm-comment {
-	display: none;
-}

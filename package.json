@@ -1,6 +1,6 @@
 {
   "name": "obsidian-resizer",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Resize embedded images and PDFs in Obsidian by dragging corners",
   "main": "main.js",
   "scripts": {

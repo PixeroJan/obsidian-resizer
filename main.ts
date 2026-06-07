@@ -1,6 +1,56 @@
 ﻿import { Plugin, MarkdownView, Notice, Editor } from "obsidian";
 import { ImageScaleSettings, DEFAULT_SETTINGS, ImageScaleSettingTab } from "./settings";
 import { ImageResizer } from "./imageResizer";
+import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
+
+const pdfScaleCommentPattern = /<!--\s*pdf-scale:[\d.]+\s*-->/g;
+
+function createPdfScaleCommentHider() {
+	return ViewPlugin.fromClass(class {
+		decorations: DecorationSet;
+
+		constructor(view: EditorView) {
+			this.decorations = this.buildDecorations(view);
+		}
+
+		update(update: ViewUpdate) {
+			if (update.docChanged || update.viewportChanged || update.selectionSet) {
+				this.decorations = this.buildDecorations(update.view);
+			}
+		}
+
+		private buildDecorations(view: EditorView) {
+			const decorations = [];
+			const activeLines = new Set<number>();
+
+			for (const range of view.state.selection.ranges) {
+				activeLines.add(view.state.doc.lineAt(range.head).number);
+			}
+
+			for (const visibleRange of view.visibleRanges) {
+				let position = visibleRange.from;
+				while (position <= visibleRange.to) {
+					const line = view.state.doc.lineAt(position);
+					if (!activeLines.has(line.number)) {
+						const text = line.text;
+						pdfScaleCommentPattern.lastIndex = 0;
+						let match: RegExpExecArray | null;
+						while ((match = pdfScaleCommentPattern.exec(text)) !== null) {
+							decorations.push(Decoration.replace({}).range(line.from + match.index, line.from + match.index + match[0].length));
+						}
+					}
+
+					if (line.to >= visibleRange.to) break;
+					position = line.to + 1;
+				}
+			}
+
+			return Decoration.set(decorations, true);
+		}
+	}, {
+		decorations: plugin => plugin.decorations
+	});
+}
 
 export default class ImageScalePlugin extends Plugin {
 settings!: ImageScaleSettings;
@@ -11,6 +61,7 @@ async onload() {
 await this.loadSettings();
 this.resizer = new ImageResizer(this.app, this, this.settings);
 this.addSettingTab(new ImageScaleSettingTab(this.app, this));
+this.registerEditorExtension(createPdfScaleCommentHider());
 
 this.registerMarkdownPostProcessor((element, context) => {
 const images = element.querySelectorAll("img");
